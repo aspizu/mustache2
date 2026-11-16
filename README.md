@@ -22,6 +22,14 @@ bundle. Even when Mustache.js gets the same minification, mustache2 is about
 
 Measured with gzip level 9 and Brotli quality 11.
 
+## Performance
+
+Mustache.js 4.2.0 rendered repeated templates 2.1 to 4.2 times faster with its
+default cache in five local benchmarks. With caching disabled, mustache2 was
+faster at interpolation, HTML escaping, and partials; Mustache.js still won on
+lists and nested data. Measured on Apple M5 with Node.js 26.13.0, using equally
+minified builds and the median of nine warmed samples per case.
+
 ## Familiar templates
 
 Keep your variables, sections, inverted sections, partials, comments, dotted
