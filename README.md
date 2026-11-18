@@ -16,7 +16,7 @@ puts the compressed size difference at about 63%.
 
 | Library                          | Minified |    gzip |  Brotli |
 | -------------------------------- | -------: | ------: | ------: |
-| mustache2                        |  1,713 B |   964 B |   879 B |
+| mustache2                        |  1,706 B |   964 B |   878 B |
 | Mustache.js 4.2.0, published     | 11,790 B | 3,361 B | 3,032 B |
 | Mustache.js 4.2.0, same minifier |  6,492 B | 2,652 B | 2,403 B |
 

@@ -26,7 +26,7 @@ function _error(message: string, position: number): never {
   throw new Error(`${message} @${position}`)
 }
 
-export function parse(template: string): Token[] {
+export const parse = (template: string): Token[] => {
   const length = template.length
   let frame: SectionFrame = {children: [], parent: null}
   let line: Line = {standalone: null}
