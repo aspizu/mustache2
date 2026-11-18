@@ -1,20 +1,21 @@
 import {lookup} from "./context.js"
-import {parse, type Token} from "./parse.js"
+import {parse, TokenKind, type Token} from "./parse.js"
 
 type Partials =
   | Readonly<Record<string, string>>
   | ((name: string) => string | undefined)
 
-const _entities: Readonly<Record<string, string>> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-  "/": "&#x2F;",
-  "`": "&#x60;",
-  "=": "&#x3D;",
-}
+const _escapeCharacters = "&<>\"'`=/"
+const _entities = [
+  "&amp;",
+  "&lt;",
+  "&gt;",
+  "&quot;",
+  "&#39;",
+  "&#x60;",
+  "&#x3D;",
+  "&#x2F;",
+]
 
 export function render(template: string, view: unknown, partials?: Partials): string {
   if (typeof template !== "string") {
@@ -24,8 +25,8 @@ export function render(template: string, view: unknown, partials?: Partials): st
   function _renderTokens(tokens: Token[], context: readonly unknown[]): string {
     return tokens
       .map((token) => {
-        if (token.type === "text") {
-          return token.value
+        if (token.type === TokenKind.Text) {
+          return token.line.standalone ? "" : token.value
         }
         if (token.type === ">") {
           let partial: string | undefined
@@ -38,28 +39,31 @@ export function render(template: string, view: unknown, partials?: Partials): st
             return ""
           }
           return _renderTokens(
-            parse(partial.replace(/^(?=.)/gm, () => token.indent)),
+            parse(
+              partial.replace(/^(?=.)/gm, token.line.standalone ? token.indent : ""),
+            ),
             context,
           )
         }
         const value = lookup(context, token.value)
-        if (token.type === "name" || token.type === "&") {
-          let text = String(value)
-          if (value === null || value === undefined) {
-            text = ""
-          }
+        if (token.type === TokenKind.Name || token.type === "&") {
+          const printable: unknown = value ?? ""
+          const text = String(printable)
           return token.type === "&"
             ? text
-            : text.replace(/[&<>"'`=/]/g, (char) => _entities[char])
+            : text.replace(
+                /[&<>"'`=/]/g,
+                (char) => _entities[_escapeCharacters.indexOf(char)],
+              )
         }
-        const falsey = !value || (Array.isArray(value) && value.length === 0)
+        const items = Array.isArray(value) ? value : [value]
+        if (!value || items.length === 0) {
+          return token.type === "^" ? _renderTokens(token.children, context) : ""
+        }
         if (token.type === "^") {
-          return falsey ? _renderTokens(token.children, context) : ""
-        }
-        if (falsey) {
           return ""
         }
-        return Array.from(Array.isArray(value) ? value : [value], (item) =>
+        return Array.from(items, (item) =>
           _renderTokens(token.children, value === true ? context : [item, ...context]),
         ).join("")
       })

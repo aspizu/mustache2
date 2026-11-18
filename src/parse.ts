@@ -1,141 +1,122 @@
-type TagType = "name" | "&" | "!" | "=" | "#" | "^" | "/" | ">"
-
-type Tag = {
-  [Type in TagType]: {
-    type: Type
-    value: string
-    indent: string
-  }
-}[TagType]
-
-interface Text {
-  type: "text"
-  value: string
+export const enum TokenKind {
+  Text,
+  Name = "",
 }
 
-type Section = Extract<Tag, {type: "#" | "^"}> & {
+interface Line {
+  standalone: boolean | null
+}
+
+export type Token =
+  | {type: TokenKind.Text; value: string; line: Line}
+  | {type: TokenKind.Name; value: string}
+  | {type: "&"; value: string}
+  | {type: ">"; value: string; indent: string; line: Line}
+  | {type: "#" | "^"; value: string; children: Token[]}
+
+interface TagPrefix {
+  0: string
+  1?: TokenKind.Name | "&" | "!" | "=" | "#" | "^" | "/" | ">" | "{"
+}
+
+interface SectionFrame {
+  value?: string
   children: Token[]
+  parent: SectionFrame | null
 }
 
-export type Token = Text | Extract<Tag, {type: "name" | "&" | ">"}> | Section
+function _error(message: string, position: number): never {
+  throw new Error(`${message} at ${position}`)
+}
 
 function _delimiters(value: string, start: number): string[] {
   if (!value.endsWith("=")) {
-    throw new Error(`Invalid tags at ${start}`)
+    _error("Invalid tags", start)
   }
   value = value.slice(0, -1).trim()
   const delimiters = value.split(/\s+/)
-  if (delimiters.length !== 2 || delimiters.some((delimiter) => !delimiter)) {
+  if (delimiters.length !== 2) {
     throw new Error(`Invalid tags: ${value}`)
   }
   return delimiters
 }
 
-function _stripLine(line: (Tag | Text)[]): void {
-  const hasTag = line.some((token) => token.type !== "text")
-  const hasContent = line.some((token) =>
-    token.type === "text"
-      ? /\S/.test(token.value)
-      : token.type === "name" || token.type === "&",
-  )
-  if (!hasTag || hasContent) return
-  let indent = ""
-  for (const token of line) {
-    if (token.type === "text") {
-      indent += token.value.replace(/[\r\n]/g, "")
-      token.value = ""
-    } else if (token.type === ">") {
-      token.indent = indent
-    }
-  }
-}
-
 export function parse(template: string): Token[] {
-  const root: Token[] = []
-  const stack: Section[] = []
-  let tokens = root
-  let line: (Tag | Text)[] = []
+  const length = template.length
+  let frame: SectionFrame = {children: [], parent: null}
+  let line: Line = {standalone: null}
+  let indent = ""
   let open = "{{"
   let close = "}}"
   let position = 0
 
-  function _appendText(end: number): void {
-    for (const value of template.slice(position, end).match(/[^\n]*\n|[^\n]+/g) ?? []) {
-      const token: Text = {type: "text", value}
-      tokens.push(token)
-      line.push(token)
-      if (value.endsWith("\n")) {
-        _stripLine(line)
-        line = []
-      }
-    }
-    position = end
+  function _unclosedSection(at: number): never {
+    _error(`Unclosed section "${frame.value}"`, at)
   }
 
-  while (position < template.length) {
-    const start = template.indexOf(open, position)
-    if (start === -1) {
-      _appendText(template.length)
-      break
-    }
-    _appendText(start)
+  function _appendText(text: string): void {
+    text.match(/[^\n]+\n?|\n/g)?.forEach((value) => {
+      frame.children.push({type: TokenKind.Text, value, line})
+      if (/\S/.test(value)) {
+        line.standalone = false
+      } else {
+        indent += value.replace(/\r/g, "")
+      }
+      if (/\n/.test(value)) {
+        line = {standalone: null}
+        indent = ""
+      }
+    })
+  }
+
+  let start: number
+  while ((start = template.indexOf(open, position)) >= 0) {
+    _appendText(template.slice(position, start))
     const contentStart = start + open.length
-    const match = template.slice(contentStart).match(/^\s*([#^/>&!={])?/)!
-    const marker = match[1] as TagType | "{" | undefined
-    const content = contentStart + match[0].length
-    const closing = marker === "{" ? `}${close}` : close
+    const prefix: TagPrefix = template.slice(contentStart).match(/^\s*([#^/>&!={]?)/)!
+    let type = prefix[1]!
+    const content = contentStart + prefix[0].length
+    let closing = close
+    if (type === "{") {
+      type = "&"
+      closing = `}${close}`
+    }
     const end = template.indexOf(closing, content)
-    if (end === -1) {
-      throw new Error(`Unclosed tag at ${template.length}`)
+    if (end < 0) {
+      _error("Unclosed tag", length)
     }
     const value = template.slice(content, end).trim()
-    const type = marker === "{" ? "&" : (marker ?? "name")
-    if (!value && type !== "!" && type !== "=") {
-      throw new Error(`Empty tag name at ${start}`)
-    }
-    const token: Tag = {type, value, indent: ""}
-    line.push(token)
+    line.standalone =
+      line.standalone !== false && type !== TokenKind.Name && type !== "&"
     position = end + closing.length
-    switch (token.type) {
-      case "#":
-      case "^": {
-        const section: Section = {
-          ...token,
-          children: [],
-        }
-        tokens.push(section)
-        stack.push(section)
-        tokens = section.children
-        break
+    if (type === "=") {
+      ;[open, close] = _delimiters(value, start)
+      continue
+    }
+    if (type === "!") continue
+    if (!value) {
+      _error("Empty tag name", start)
+    }
+    if (type === "#" || type === "^") {
+      const children: Token[] = []
+      frame.children.push({type, value, children})
+      frame = {value, children, parent: frame}
+    } else if (type === "/") {
+      if (!frame.parent) {
+        _error(`Unopened section "${value}"`, start)
       }
-      case "/": {
-        const section = stack.pop()
-        if (!section) {
-          throw new Error(`Unopened section "${token.value}" at ${start}`)
-        }
-        if (section.value !== token.value) {
-          throw new Error(`Unclosed section "${section.value}" at ${start}`)
-        }
-        tokens = stack.at(-1)?.children ?? root
-        break
+      if (frame.value !== value) {
+        _unclosedSection(start)
       }
-      case "=": {
-        ;[open, close] = _delimiters(token.value, start)
-        break
-      }
-      case "!": {
-        break
-      }
-      default: {
-        tokens.push(token)
-      }
+      frame = frame.parent
+    } else {
+      frame.children.push({type, value, indent, line})
     }
   }
 
-  _stripLine(line)
-  const unclosed = stack.at(-1)
-  if (unclosed) {
-    throw new Error(`Unclosed section "${unclosed.value}" at ${template.length}`)
+  _appendText(template.slice(position))
+  if (frame.parent) {
+    _unclosedSection(length)
   }
-  return root
+  return frame.children
 }

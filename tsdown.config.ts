@@ -10,7 +10,7 @@ export default defineConfig({
   clean: true,
   minify: {
     mangleProps: {
-      include: /^(type|value|indent|children)$/,
+      include: /^(type|value|indent|children|line|standalone|parent)$/,
     },
   },
   sourcemap: false,
