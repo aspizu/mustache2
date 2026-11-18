@@ -14,10 +14,7 @@ export type Token =
   | {type: ">"; value: string; indent: string; line: Line}
   | {type: "#" | "^"; value: string; children: Token[]}
 
-interface TagPrefix {
-  0: string
-  1?: TokenKind.Name | "&" | "!" | "=" | "#" | "^" | "/" | ">" | "{"
-}
+type TagType = TokenKind.Name | "&" | "!" | "=" | "#" | "^" | "/" | ">" | "{"
 
 interface SectionFrame {
   value?: string
@@ -26,19 +23,7 @@ interface SectionFrame {
 }
 
 function _error(message: string, position: number): never {
-  throw new Error(`${message} at ${position}`)
-}
-
-function _delimiters(value: string, start: number): string[] {
-  if (!value.endsWith("=")) {
-    _error("Invalid tags", start)
-  }
-  value = value.slice(0, -1).trim()
-  const delimiters = value.split(/\s+/)
-  if (delimiters.length !== 2) {
-    throw new Error(`Invalid tags: ${value}`)
-  }
-  return delimiters
+  throw new Error(`${message} @${position}`)
 }
 
 export function parse(template: string): Token[] {
@@ -50,11 +35,9 @@ export function parse(template: string): Token[] {
   let close = "}}"
   let position = 0
 
-  function _unclosedSection(at: number): never {
-    _error(`Unclosed section "${frame.value}"`, at)
-  }
-
-  function _appendText(text: string): void {
+  while (position < length) {
+    const start = template.indexOf(open, position)
+    const text = template.slice(position, start < 0 ? length : start)
     text.match(/[^\n]+\n?|\n/g)?.forEach((value) => {
       frame.children.push({type: TokenKind.Text, value, line})
       if (/\S/.test(value)) {
@@ -67,15 +50,13 @@ export function parse(template: string): Token[] {
         indent = ""
       }
     })
-  }
-
-  let start: number
-  while ((start = template.indexOf(open, position)) >= 0) {
-    _appendText(template.slice(position, start))
+    if (start < 0) break
     const contentStart = start + open.length
-    const prefix: TagPrefix = template.slice(contentStart).match(/^\s*([#^/>&!={]?)/)!
-    let type = prefix[1]!
-    const content = contentStart + prefix[0].length
+    let [prefix, type] = template.slice(contentStart).match(/^\s*([#^/>&!={]?)/) as [
+      string,
+      TagType,
+    ]
+    const content = contentStart + prefix.length
     let closing = close
     if (type === "{") {
       type = "&"
@@ -86,16 +67,15 @@ export function parse(template: string): Token[] {
       _error("Unclosed tag", length)
     }
     const value = template.slice(content, end).trim()
-    line.standalone =
-      line.standalone !== false && type !== TokenKind.Name && type !== "&"
+    line.standalone = line.standalone !== false && !!type && type !== "&"
     position = end + closing.length
     if (type === "=") {
-      ;[open, close] = _delimiters(value, start)
+      ;[, open, close] = value.match(/^(\S+)\s+(\S+)\s*=$/) ?? _error("Bad tags", start)
       continue
     }
     if (type === "!") continue
     if (!value) {
-      _error("Empty tag name", start)
+      _error("Empty tag", start)
     }
     if (type === "#" || type === "^") {
       const children: Token[] = []
@@ -103,10 +83,10 @@ export function parse(template: string): Token[] {
       frame = {value, children, parent: frame}
     } else if (type === "/") {
       if (!frame.parent) {
-        _error(`Unopened section "${value}"`, start)
+        _error(`Unexpected /${value}`, start)
       }
       if (frame.value !== value) {
-        _unclosedSection(start)
+        _error(`Unclosed ${frame.value}`, start)
       }
       frame = frame.parent
     } else {
@@ -114,9 +94,8 @@ export function parse(template: string): Token[] {
     }
   }
 
-  _appendText(template.slice(position))
   if (frame.parent) {
-    _unclosedSection(length)
+    _error(`Unclosed ${frame.value}`, length)
   }
   return frame.children
 }

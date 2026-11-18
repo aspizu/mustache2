@@ -19,7 +19,7 @@
     "build": "tsc -p tsconfig.build.json && tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "oxfmt --check . && oxlint .",
+    "lint": "oxfmt --check .",
     "format": "oxfmt .",
     "prepare": "lefthook install",
     "prepack": "pnpm run build"

@@ -10,13 +10,13 @@ This project is vibecoded.
 
 ## Smaller download
 
-Compared with the published Mustache.js 4.2.0 bundle, mustache2 is about 68%
+Compared with the published Mustache.js 4.2.0 bundle, mustache2 is about 71%
 smaller with either gzip or Brotli. Applying the same minifier to both libraries
-puts the compressed size difference at about 60%.
+puts the compressed size difference at about 63%.
 
 | Library                          | Minified |    gzip |  Brotli |
 | -------------------------------- | -------: | ------: | ------: |
-| mustache2                        |  1,950 B | 1,064 B |   973 B |
+| mustache2                        |  1,713 B |   964 B |   879 B |
 | Mustache.js 4.2.0, published     | 11,790 B | 3,361 B | 3,032 B |
 | Mustache.js 4.2.0, same minifier |  6,492 B | 2,652 B | 2,403 B |
 

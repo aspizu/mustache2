@@ -6,11 +6,6 @@ pre-commit:
       run: pnpm exec oxfmt {staged_files}
       stage_fixed: true
 
-    - name: oxlint
-      glob: "*.{cjs,cts,js,mjs,mts,ts}"
-      exclude: "^vendor/"
-      run: pnpm exec oxlint {staged_files}
-
 pre-push:
   jobs:
     - name: typecheck

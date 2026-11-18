@@ -1,4 +1,3 @@
-import {lookup} from "./context.js"
 import {parse, TokenKind, type Token} from "./parse.js"
 
 type Partials =
@@ -6,20 +5,15 @@ type Partials =
   | ((name: string) => string | undefined)
 
 const _escapeCharacters = "&<>\"'`=/"
-const _entities = [
-  "&amp;",
-  "&lt;",
-  "&gt;",
-  "&quot;",
-  "&#39;",
-  "&#x60;",
-  "&#x3D;",
-  "&#x2F;",
-]
+const _entities = "&amp; &lt; &gt; &quot; &#39; &#x60; &#x3D; &#x2F;".split(" ")
+
+function _hasProperty(value: unknown, name: string): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && name in value
+}
 
 export function render(template: string, view: unknown, partials?: Partials): string {
   if (typeof template !== "string") {
-    throw new TypeError("Template must be a string")
+    throw new TypeError("Expected string")
   }
 
   function _renderTokens(tokens: Token[], context: readonly unknown[]): string {
@@ -45,11 +39,24 @@ export function render(template: string, view: unknown, partials?: Partials): st
             context,
           )
         }
-        const value = lookup(context, token.value)
-        if (token.type === TokenKind.Name || token.type === "&") {
-          const printable: unknown = value ?? ""
-          const text = String(printable)
-          return token.type === "&"
+        let value = context[0]
+        if (token.value !== ".") {
+          const parts = token.value.split(".")
+          value = context.find((view) => _hasProperty(view, parts[0]))
+          for (const key of parts) {
+            if (value !== null && value !== undefined) {
+              value = Object(value)
+            }
+            if (!_hasProperty(value, key)) {
+              value = undefined
+              break
+            }
+            value = value[key]
+          }
+        }
+        if (!token.type || token.type === "&") {
+          const text = String(value ?? "")
+          return token.type
             ? text
             : text.replace(
                 /[&<>"'`=/]/g,
